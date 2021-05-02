@@ -1,0 +1,48 @@
+{
+  "name": "json-to-code",
+  "version": "0.0.0",
+  "description": "JSON-to-Code Encoding: Compress JSON Data into Actual Code",
+  "main": "json-to-code.js",
+  "files": [
+    "json-to-code.js",
+    "utils.js"
+  ],
+  "scripts": {
+    "format": "npx prettier --print-width=240 --write *.js",
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DanielJDufour/vartogram.git"
+  },
+  "keywords": [
+    "code",
+    "compression",
+    "data",
+    "encoding",
+    "gram",
+    "javascript",
+    "json"
+  ],
+  "author": "Daniel J. Dufour",
+  "license": "CC0-1.0",
+  "bugs": {
+    "url": "https://github.com/DanielJDufour/vartogram/issues"
+  },
+  "homepage": "https://github.com/DanielJDufour/vartogram#readme",
+  "dependencies": {
+    "advarr": "^0.4.0",
+    "declare-vars": "^0.1.0",
+    "deconcat": "^0.0.1",
+    "deep-counter": "^0.0.2",
+    "deepest-walk": "^0.1.0",
+    "min-quote": "*",
+    "n-gram-counter": "*",
+    "separo": "^0.0.2"
+  },
+  "devDependencies": {
+    "flug": "^0.0.0",
+    "striptags": "^3.1.1",
+    "var-names": "^0.0.0"
+  }
+}
