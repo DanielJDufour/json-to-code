@@ -228,10 +228,6 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
     data: result,
     callback: ({ data: it, mod, type: dataType }) => {
       try {
-        if (!dataType) {
-          console.error("No Data Type");
-          process.exit();
-        }
         if (debug_level >= 2) console.log("walking", { it, dataType });
         if (typeof it === "number") {
           const { varname } = lookup(it);
@@ -271,10 +267,6 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
               });
               if (dataType === "object-key-string") modStr += "]";
               modStr += delnext;
-              if (modStr.includes("NaN")) {
-                console.log("modStr:", [modStr]);
-                throw "NaN found in string";
-              }
               mod(unescp(modStr));
             } else {
               mod(delprev + unescp(minQuote(it)) + delnext);
@@ -417,13 +409,7 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
           }
         }
         // console.log("replaced", parts, "with", swapped);
-        // process.exit();
 
-        if (swapped.length === 0) {
-          console.log("parts;", parts);
-          console.log("swapped:", swapped);
-          process.exit();
-        }
         const newStr = (hasDelPrev ? delprev : "") + swapped.join("+") + (hasDelNext ? delnext : "");
 
         mod(unescp(newStr));
@@ -434,7 +420,6 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
       actual_bigram_to_varname_passes.push(actual_bigram_to_varname);
     }
   }
-  // console.log("actual_bigram_to_varname_passes:", actual_bigram_to_varname_passes);
 
   let outcode = "";
 
@@ -461,14 +446,11 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
       vars: Object.values(actual_bigram_to_varname).map(({ bigram, varname }) => ({ name: varname, value: bigram.join("+"), raw: true })),
     });
   });
-  // console.log(outcode);
 
   // process the text operations
   const processedJSON = JSON.stringify(result)
     .replaceAll(new RegExp(`.${delprev}`, "g"), "")
     .replaceAll(new RegExp(`${delnext}.`, "g"), "");
-  // console.log("processedJSON:", processedJSON.substr(0, 100));
-  // console.log("outcode:", outcode.substr(0, 500));
 
   outcode += "\n";
   outcode += `${output} = ${processedJSON};`;
