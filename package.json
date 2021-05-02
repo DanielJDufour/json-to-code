@@ -4,8 +4,7 @@
   "description": "JSON-to-Code Encoding: Compress JSON Data into Actual Code",
   "main": "json-to-code.js",
   "files": [
-    "json-to-code.js",
-    "utils.js"
+    "json-to-code.js"
   ],
   "scripts": {
     "format": "npx prettier --print-width=240 --write *.js",

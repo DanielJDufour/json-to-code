@@ -9,9 +9,27 @@ const { genVarNames } = require("var-names");
 const separo = require("separo");
 const striptags = require("striptags");
 
-const { forEachString, toString } = require("./utils");
-
 const isQuoted = (str) => str.match(/^(['"`]).*\1$/);
+
+const forEachString = (data, cb) => {
+  walk({
+    data,
+    callback: ({ data, mod, type }) => {
+      if (typeof data === "string") {
+        cb({ str: data, mod, dataType: type });
+      }
+    },
+  });
+};
+
+// string in JavaScript code
+const toString = (it) => {
+  if (it === null) return "null";
+  else if (it === undefined) return "undefined";
+  else if (typeof it === "string") return it;
+  else if (typeof it === "number") return it.toString();
+  else throw new Error("to-string failed because unexpected type");
+};
 
 const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.exports" }) => {
   if (debug_level >= 1) console.log("[encode] starting");
