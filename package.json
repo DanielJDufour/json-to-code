@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DanielJDufour/vartogram.git"
+    "url": "git+https://github.com/DanielJDufour/json-to-code.git"
   },
   "keywords": [
     "code",
@@ -26,9 +26,9 @@
   "author": "Daniel J. Dufour",
   "license": "CC0-1.0",
   "bugs": {
-    "url": "https://github.com/DanielJDufour/vartogram/issues"
+    "url": "https://github.com/DanielJDufour/json-to-code/issues"
   },
-  "homepage": "https://github.com/DanielJDufour/vartogram#readme",
+  "homepage": "https://github.com/DanielJDufour/json-to-code#readme",
   "dependencies": {
     "advarr": "^0.4.0",
     "declare-vars": "^0.1.0",
