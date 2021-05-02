@@ -1,6 +1,6 @@
 {
   "name": "json-to-code",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "JSON-to-Code Encoding: Compress JSON Data into Actual Code",
   "main": "json-to-code.js",
   "files": [
