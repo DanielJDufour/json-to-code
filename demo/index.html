@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="./easy-file-saver.js"></script>
+    <script src="./json-to-code.min.js"></script>
+  </head>
+  <body>
+    <h1>json-to-code compression demo</h1>
+    <h2>compress your JSON by converting it into simple executable JavaScript code</h2>
+    <input type="file" id="json-file">
+    <div id="notification"></div>
+    <script>
+      document.getElementById("json-file").addEventListener("change", function(evt) {
+        document.getElementById("notification").textContent = "";
+        const file = this.files[0];
+        if (!file) return;
+        document.getElementById("notification").textContent = "reading " + file.name;
+        const filename = file.name + ".js";
+        file.text().then(text => {
+          try {
+            document.getElementById("notification").textContent = "converting " + file.name + " to " + filename + ". please be patient.";
+            const result = jsonToCode.encode({ data: text, prefix: "window.mydata =" });
+            document.getElementById("notification").textContent = "saving " + filename;
+            console.log("saving", result);
+            window.saveFile({ data: result.code, filename })
+          } catch (error) {
+            console.error(error);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
