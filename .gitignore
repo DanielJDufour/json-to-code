@@ -106,3 +106,6 @@ dist
 *bak*
 *old*
 *tmp*
+
+# pnpm lock file
+pnpm-lock.yaml
