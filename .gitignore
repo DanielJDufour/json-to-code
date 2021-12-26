@@ -103,9 +103,22 @@ dist
 # TernJS port file
 .tern-port
 
+# Python stuff
+__pycache__/
+
 *bak*
 *old*
 *tmp*
+/*.json
+*.py
+
+# test data
+test-data/crs.json
+test-data/crs.json.zip
+test-data/proj.json
 
 # pnpm lock file
 pnpm-lock.yaml
+
+
+
