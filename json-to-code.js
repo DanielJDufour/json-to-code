@@ -8,32 +8,66 @@ const minQuote = require("min-quote");
 const { genVarNames } = require("var-names");
 const separo = require("separo");
 const striptags = require("striptags");
+const textops = require("textops");
 
-const isQuoted = (str) => str.match(/^(['"`]).*\1$/);
+const hasStuff = obj => Object.keys(obj).length > 0;
+
+const isFlatArray = it => Array.isArray(it) && it.every(subitem => subitem === null || typeof subitem !== "object");
+
+const isQuoted = str => str.match(/^(['"`]).*\1$/);
+
+// remove wrapping braces
+const unbrace = str => str.replace(/^\[/, "").replace(/\]$/);
+
+const forEachFlatArray = (data, cb) => {
+  walk({
+    data,
+    callback: ({ data, mod, type }) => {
+      if (isFlatArray(data)) {
+        cb({ data, mod, type });
+      }
+    }
+  });
+};
 
 const forEachString = (data, cb) => {
   walk({
     data,
     callback: ({ data, mod, type }) => {
       if (typeof data === "string") {
-        cb({ str: data, mod, dataType: type });
+        cb({ str: data, mod, type });
       }
-    },
+    }
   });
 };
 
-// string in JavaScript code
-const toString = (it) => {
+// string in code
+const toString = it => {
   if (it === null) return "null";
   else if (it === undefined) return "undefined";
   else if (typeof it === "string") return it;
   else if (typeof it === "number") return it.toString();
+  else if (Array.isArray(it)) return JSON.stringify(it);
   else throw new Error("to-string failed because unexpected type");
 };
 
-const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.exports" }) => {
+const encode = ({ data, debug_level = 0, language = "JavaScript", max_passes = 100, prefix, read_only = true, spacer }) => {
   if (debug_level >= 1) console.log("[encode] starting");
   if (debug_level >= 2) console.log("[encode] data:", JSON.stringify(data).substring(0, 200), "...");
+
+  // normalizing language
+  language = language.toUpperCase();
+  let lang;
+  if (language === "JS" || language === "JAVASCRIPT") lang = "JS";
+  else if (language === "PY" || language === "PYTHON") lang = "PY";
+
+  if (prefix == undefined) {
+    if (lang === "JS") prefix = "module.exports";
+    else if (lang === "PY") prefix = "data";
+  }
+
+  const useBacktick = lang === "JS";
+
   const counts = count({ data, debug_level: debug_level - 1 });
   if (debug_level >= 1) console.log("counts:", counts);
 
@@ -49,18 +83,18 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
   if (debug_level >= 1) console.log("uid:", uid);
 
   // a number is always the first and last because there's not such thing as a sub-number (unlike a sub-string)
-  const number_counts = Object.values(counts.numbers).map((it) => ({
+  const number_counts = Object.values(counts.numbers).map(it => ({
     type: "number",
     value: it.value,
-    count: it.count,
+    count: it.count
   }));
 
-  const string_counts = Object.values(counts.strings).map((it) => ({
+  const string_counts = Object.values(counts.strings).map(it => ({
     type: "string",
     value: it.value,
     count: it.count,
     first: it.first,
-    last: it.last,
+    last: it.last
   }));
 
   const all_counts = [...number_counts, ...string_counts];
@@ -68,14 +102,14 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
     all_counts.push({
       type: "null",
       value: null,
-      count: counts.null,
+      count: counts.null
     });
   }
   if (counts.undefined) {
     all_counts.push({
       type: "undefined",
       value: undefined,
-      count: counts.undefined,
+      count: counts.undefined
     });
   }
 
@@ -83,7 +117,7 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
   if (debug_level >= 1) console.log("[encode] sorted counts");
   if (debug_level >= 2) console.log("[encode] sorted_counts:", sorted_counts);
 
-  const tokens = sorted_counts.map((it) => {
+  const tokens = sorted_counts.map(it => {
     try {
       if (debug_level >= 2) console.log("it:", it);
 
@@ -143,7 +177,7 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
           first,
           last,
           pad,
-          savings,
+          savings
         };
       }
     } catch (error) {
@@ -152,11 +186,21 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
   });
   if (debug_level >= 1) console.log(tokens);
 
+  const skipVarNames = new Set();
+  if (lang === "PY") {
+    ["and", "as", "is", "or", "null"].forEach(skipword => {
+      skipVarNames.add(skipword);
+    });
+  }
+
   const varname2token = new Map();
   const token2varname = new Map();
+
   const gen = genVarNames();
   for (const varname of gen) {
     if (debug_level >= 2) console.log("varname:", varname);
+    if (skipVarNames.has(varname)) continue;
+
     const varlen = varname.length;
 
     // sort tokens by saving for the given variable's length
@@ -184,15 +228,16 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
   if (debug_level >= 1) console.log("cloned original data");
   if (debug_level >= 2) console.log("cloned data:", result);
 
-  /*
-    string operations
-    <delprev> - deletes previous character
-    <delnext> - deletes next character
-  */
-  const delprev = `<delprev-${uid}>`;
-  const delnext = `<delnext-${uid}>`;
+  const delprevchar = `<delprevchar-${uid}>`;
+  const delnextchar = `<delnextchar-${uid}>`;
 
-  const lookup = (x) => {
+  // is the string an expression for an object key
+  // like [a+b+c] in { [a+b+c]: value }
+  const isObjKeyExprFn = ({ str, type }) => {
+    return type === "object-key-string" && str.startsWith(delprevchar + "[") && str.endsWith(delnextchar + "]");
+  };
+
+  const lookup = x => {
     let varname;
     let varvalue;
     if (token2varname.has(x)) {
@@ -210,38 +255,41 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
     return { varname, varvalue };
   };
 
-  const getVarOut = ({ substr, varname, varvalue }) => {
-    // console.log("starting getVarOut with:", { substr, varname, varvalue });
-    if (substr.startsWith(" ")) {
-      if (varvalue.startsWith(" ")) {
-        return varname;
-      } else {
-        return `" "+${varname}`;
-      }
-    } else {
-      if (varvalue.startsWith(" ")) {
-        return `${varname}.trim()`;
-      } else {
-        return varname;
+  const getVarOut = ({ it, varname, varvalue }) => {
+    if (typeof it === "string") {
+      if (it.startsWith(" ")) {
+        if (varvalue.startsWith(" ")) {
+          return varname;
+        } else {
+          return `" "+${varname}`;
+        }
+      } else if (varvalue.startsWith(" ")) {
+        if (lang === "JS") {
+          return `${varname}.trim()`;
+        } else {
+          return `${varnamme}.strip()`;
+        }
       }
     }
+    return varname;
   };
 
-  const unescp = (str) =>
+  const unescp = str =>
     str.replaceAll('"', (match, offset, string) => {
       const before = string.substring(0, offset);
-      // console.log({match, offset, string, before});
-      if (before.endsWith(delnext)) return '"';
-      else return delnext + '"';
+      if (before.endsWith(delnextchar)) return '"';
+      else return delnextchar + '"';
     });
 
-  const getExpr = (str) => {
-    const { varname, varvalue } = lookup(str);
-    if (varname) return getVarOut({ substr: str, varname, varvalue });
+  const getExpr = it => {
+    const { varname, varvalue } = lookup(it);
+    if (varname) return getVarOut({ it, varname, varvalue });
   };
 
   if (debug_level >= 1) console.log("starting walk");
 
+  // first replacement pass
+  // walk through whole object and replace substring and numbers with variables
   walk({
     data: result,
     callback: ({ data: it, mod, type: dataType }) => {
@@ -249,25 +297,25 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
         if (debug_level >= 2) console.log("walking", { it, dataType });
         if (typeof it === "number") {
           const { varname } = lookup(it);
-          if (varname) mod(delprev + varname + delnext);
+          if (varname) mod(delprevchar + varname + delnextchar);
         } else if (typeof it === "undefined") {
           const expr = getExpr(it);
-          if (expr) mod(expr);
-          else mod(delprev + "undefined" + delnext);
-        } else if (typeof it === "null") {
+          if (expr) mod(delprevchar + expr + delnextchar);
+          else mod(delprevchar + "undefined" + delnextchar);
+        } else if (it === null) {
           const expr = getExpr(it);
-          if (expr) mod(expr);
-          else mod(delprev + "null" + delnext);
+          if (expr) mod(delprevchar + expr + delnextchar);
+          else mod(delprevchar + "null" + delnextchar);
         } else if (typeof it === "string") {
           if (["object-key-string", "object-value-string", "array-item-string"].includes(dataType)) {
-            const words = separo(it, " ", { attachSep: true }).map((word) => {
+            const words = separo(it, " ", { attachSep: true }).map(word => {
               const expr = getExpr(word);
               if (expr) return { expr };
-              else return { quoted: minQuote(word) };
+              else return { quoted: minQuote(word, { backtick: useBacktick }) };
             });
-            if (words.some((word) => word.expr)) {
-              let modStr = delprev;
-              if (dataType === "object-key-string") modStr += "[";
+            if (words.some(word => word.expr)) {
+              let modStr = delprevchar;
+              if (dataType === "object-key-string" && lang === "JS") modStr += "[";
               forEach(words, ({ it: word, prev, first: firstWord }) => {
                 if (word.expr) {
                   if (!firstWord) modStr += "+";
@@ -283,14 +331,14 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
                   }
                 }
               });
-              if (dataType === "object-key-string") modStr += "]";
-              modStr += delnext;
+              if (dataType === "object-key-string" && lang === "JS") modStr += "]";
+              modStr += delnextchar;
               mod(unescp(modStr));
             } else {
-              mod(delprev + unescp(minQuote(it)) + delnext);
+              mod(delprevchar + unescp(minQuote(it, { backtick: useBacktick })) + delnextchar);
             }
           } else {
-            console.log("it:", { it, dataType });
+            console.log("[json-to-code] it:", { it, dataType });
             throw new Error("unexpected dataType:", dataType);
           }
         }
@@ -298,7 +346,7 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
         console.error("walking error", error);
         throw error;
       }
-    },
+    }
   });
 
   /*
@@ -308,113 +356,165 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
   */
 
   const usedVarNames = new Set(varname2token.keys());
-  const actual_bigram_to_varname_passes = [];
-  for (let pass = 0; pass < max_passes - 1; pass++) {
-    const actual_bigram_to_varname = {};
-    // get an array of new varnames of all the same length (i.e. cost)
-    const varnames = [];
-    let varlen;
-    const varNameGen = genVarNames();
-    for (const varname of varNameGen) {
-      if (usedVarNames.has(varname)) continue;
-      if (!varlen) varlen = varname.length;
-      if (varname.length !== varlen) break;
-      varnames.push(varname);
-    }
+  const all_substitutions = [];
+  let pass = 1; // count previous pass for unigrams
+  while (pass < max_passes) {
+    // holds whether anything changed
+    let changed = false;
 
-    // clean text ops from strings
-    const bigram_count = {};
+    // repeat trying to recursively compress bigrams
+    // until can't save any more space
+    while (pass < max_passes) {
+      if (debug_level >= 1) console.log("checking bigram saving opportunities");
+      // increment pass now because might break early later if no potential savings
+      pass++;
 
-    // we already replaced numbers, nulls, and undefineds in the first pass
-    // so we can just focus on strings
-    forEachString(result, ({ str }) => {
-      // console.log("string:", [str]);
-      // remove any text operations like delprev and delnext
-      str = striptags(str);
+      const substitutions = {};
 
-      // remove [ ... ]
-      str = str.replace(/^\[/, "").replace(/\]$/, "");
-
-      const parts = deconcat(str);
-      // console.log("parts:", parts)
-
-      const bigrams = countNGrams({ data: parts, n: 2 });
-
-      for (let b = 0; b < bigrams.length; b++) {
-        const [bigram, subcount] = bigrams[b];
-        const [first, second] = bigram;
-
-        // ignore bigrams that include a strings
-        if (isQuoted(first) || isQuoted(second)) continue;
-
-        const key = JSON.stringify(bigram);
-        if (key in bigram_count) bigram_count[key][1] += subcount;
-        else bigram_count[key] = [bigram, subcount];
+      // get an array of new varnames of all the same length (i.e. cost)
+      const varnames = [];
+      let varlen;
+      const varNameGen = genVarNames();
+      for (const varname of varNameGen) {
+        if (usedVarNames.has(varname)) continue;
+        if (skipVarNames.has(varname)) continue;
+        if (!varlen) varlen = varname.length;
+        if (varname.length !== varlen) break;
+        varnames.push(varname);
       }
-    });
+      if (debug_level >= 2) console.log(`${varnames.length} possible varnames with length ${varlen}`);
 
-    const bigram_savings = [];
-    Object.values(bigram_count).forEach(([bigram, count]) => {
-      // bigram is like [ 'E', 'A' ]
-      const len = bigram.join("+").length;
-      const current_cost = len * count;
-      // declaration cost is , + variable + = + len
-      const declaration_cost = 1 + varlen + 1 + len;
-      const replacement_cost = declaration_cost + varlen * count;
-      const savings = current_cost - replacement_cost;
+      // object with
+      // key: JSON of bigram array
+      // value: raw number count
+      const bigram_count = {};
 
-      // only care if actually save space
-      if (savings > 0) bigram_savings.push([bigram, savings]);
-    });
+      // we already replaced numbers, nulls, and undefineds in the first pass
+      // so we can just focus on strings
+      forEachString(result, leaf => {
+        let { str } = leaf;
 
-    // no more opportunities to save space
-    if (bigram_savings.length === 0) break;
+        // remove any text operations like delprevchar and delnextchar
+        // assuming text ops are only at the beginning and the end
+        // is that a good assumption?
+        str = striptags(str);
 
-    // sort bigram savings array from smallest to largest savings
-    bigram_savings.sort((a, b) => Math.sign(a[1] - b[1]));
+        // remove wrapping straight braces around variable object keys
+        // like going from [a+b] to a+b
+        if (isObjKeyExprFn(leaf)) str = unbrace(str);
 
-    // console.log("bigram_savings", bigram_savings)
+        // from a+b to array of ["a", "b"]
+        const parts = deconcat(str);
 
-    // assign bigrams to varnames
-    const bigram_to_varname = {};
-    for (let v = 0; v < varnames.length; v++) {
-      const varname = varnames[v];
-      // console.log("varname:", varname);
-      const [bigram, savings] = bigram_savings.pop();
-      const key = JSON.stringify(bigram);
-      bigram_to_varname[key] = { bigram, varname, savings };
+        // count sequential pairs
+        const bigrams = countNGrams({ data: parts, n: 2 });
+
+        for (let b = 0; b < bigrams.length; b++) {
+          const [bigram, subcount] = bigrams[b];
+          const [first, second] = bigram;
+
+          // ignore bigrams that include raw strings
+          // code currently only handles bigrams made up of 2 variables
+          if (isQuoted(first) || isQuoted(second)) continue;
+
+          // convert bigram array to JSON string representation
+          const key = JSON.stringify(bigram);
+          if (key in bigram_count) bigram_count[key] += subcount;
+          else bigram_count[key] = subcount;
+        }
+      });
+
+      const bigram_savings = [];
+      Object.entries(bigram_count).forEach(([bigram, count]) => {
+        // convert bigram key to actual array
+        const bigram_array = JSON.parse(bigram);
+
+        // bigram is like [ 'E', 'A' ]
+        // get length of E+A or 3
+        const len = bigram_array.join("+").length;
+
+        // current character count of bigrams
+        const current_cost = len * count;
+
+        // declaration cost is , + variable + = + len
+        const declaration_cost = 1 + varlen + 1 + len;
+
+        // how many bytes bigram would take up if replaced with a variable
+        const replacement_cost = declaration_cost + varlen * count;
+
+        // how many bytes we would save if we replaced a bigram with a variable
+        const savings = current_cost - replacement_cost;
+
+        // only care if actually save space
+        if (savings > 0) bigram_savings.push([bigram, savings]);
+      });
+
+      // no more opportunities to save space
+      // breaks out of only inner loop for bigrams
       if (bigram_savings.length === 0) break;
-    }
-    // console.log("bigram_to_varname:", bigram_to_varname);
 
-    // walk through data and see if replacement opportunities
-    forEachString(result, ({ str, mod, dataType }) => {
-      const hasDelPrev = str.startsWith(delprev);
-      const hasDelNext = str.endsWith(delnext);
+      // sort bigram savings array from smallest to largest savings
+      bigram_savings.sort((a, b) => Math.sign(a[1] - b[1]));
 
-      if (dataType === "array-item-string") {
+      // console.log(`bigram_savings (${bigram_savings.length}) :`, bigram_savings.slice(0, 3));
+
+      // iterate through varnames of the same length
+      // assigning bigrams to the remaining names
+      const bigram_to_varname = {};
+      for (let v = 0; v < varnames.length; v++) {
+        const varname = varnames[v];
+
+        // pop off the last bigram which has the biggest savings
+        const bigram = bigram_savings.pop()[0];
+
+        // bigram is already JSON stringified
+        bigram_to_varname[bigram] = varname;
+
+        // no more bigrams to replace
+        // seems we have more potential variable names
+        // than actual replaceable bigrams
+        if (bigram_savings.length === 0) break;
+      }
+
+      // walk through data and make substitutions
+      forEachString(result, leaf => {
+        let { str, mod, type } = leaf;
+
+        const hasDelPrev = str.startsWith(delprevchar);
+        const hasDelNext = str.endsWith(delnextchar);
+
+        // remove text operations
+        str = striptags(str);
+
+        let isObjKeyExpr = isObjKeyExprFn(leaf);
+
+        // remove wrapping straight braces around variable object keys
+        // like going from [a+b] to a+b
+        if (isObjKeyExpr) str = unbrace(str);
+
         // converts D+' +lat=39'+u+CO into ["D", "' +lat=39'", "u", "CO"], so can be combined again with +
-        const parts = deconcat(striptags(str));
+        const parts = deconcat(str);
 
+        // parts of string with variable substitution
         const swapped = [];
 
+        let needToMod = false;
         if (parts.length === 1) {
           swapped.push(parts[0]);
         } else {
           // can only replace bigrams if have more than one gram
           for (let p = 1; p < parts.length; p++) {
-            // console.log("p:", p);
             const prev = parts[p - 1];
             const curr = parts[p];
             const bigram = [prev, curr];
-            // console.log("bigram;", bigram);
             const key = JSON.stringify(bigram);
             if (key in bigram_to_varname) {
-              // console.log("replacing");
-              const varname = bigram_to_varname[key].varname;
+              needToMod = true;
+              if (type === "object-key-string") isObjKeyExpr = true;
+              const varname = bigram_to_varname[key];
               swapped.push(varname);
               usedVarNames.add(varname);
-              actual_bigram_to_varname[key] = { bigram, varname };
+              substitutions[key] = varname;
               p++; // skip checking the next bigram (because curr would be prev for that)
 
               // there's only one gram left, so we know that it won't be replaced
@@ -423,27 +523,125 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
               swapped.push(prev);
               if (p === parts.length - 1) swapped.push(curr);
             }
-            // console.log("swapped:", swapped);
           }
         }
-        // console.log("replaced", parts, "with", swapped);
 
-        const newStr = (hasDelPrev ? delprev : "") + swapped.join("+") + (hasDelNext ? delnext : "");
+        const newStr = (hasDelPrev ? delprevchar : "") + (isObjKeyExpr ? "[" : "") + swapped.join("+") + (isObjKeyExpr ? "]" : "") + (hasDelNext ? delnextchar : "");
 
-        mod(unescp(newStr));
+        if (needToMod) mod(unescp(newStr));
+      });
+      if (hasStuff(substitutions)) {
+        changed = true;
+        all_substitutions.push({ type: "bigram", data: substitutions });
       }
-    });
-    // console.log(actual_bigram_to_varname);
-    if (Object.keys(actual_bigram_to_varname).length > 0) {
-      actual_bigram_to_varname_passes.push(actual_bigram_to_varname);
+    }
+
+    // done trying to save space via recursive bigrams,
+    // so now try to find repeated arrays
+    if (debug_level >= 2) console.log("checking array saving opportunities");
+    while (pass < max_passes && read_only) {
+      pass++;
+      const substitutions = {};
+      // get an array of new varnames of all the same length (i.e. cost)
+      const varnames = [];
+      let varlen;
+      const varNameGen = genVarNames();
+      for (const varname of varNameGen) {
+        if (usedVarNames.has(varname)) continue;
+        if (skipVarNames.has(varname)) continue;
+        if (!varlen) varlen = varname.length;
+        if (varname.length !== varlen) break;
+        varnames.push(varname);
+      }
+
+      // read only output, so we can re-use repetitive flat arrays
+      const arr_count = {};
+      forEachFlatArray(result, ({ data }) => {
+        let str = toString(data);
+
+        // str includes any embedded text operations for the array
+
+        arr_count[str] ??= 0; // initialize to zero if necessary
+        arr_count[str]++;
+      });
+
+      const arr_savings = [];
+      Object.entries(arr_count).forEach(([arr, count]) => {
+        // run embedded text operations
+        // cleans and removes <delprevchar> and <delnextchar>
+        const { text } = textops.run({ text: arr, uid: Number(uid) });
+
+        const len = text.length;
+        const current_cost = len * count;
+
+        // declaration cost is , + variable + = + len
+        const declaration_cost = 1 + varlen + 1 + len;
+
+        const replacement_cost = declaration_cost + varlen * count;
+        const savings = current_cost - replacement_cost;
+
+        // only care if actually save space
+        if (savings > 0) arr_savings.push([arr, savings]);
+      });
+
+      if (arr_savings.length === 0) {
+        if (debug_level >= 2) console.log("no more opportunities to save space");
+        break;
+      }
+
+      // sort bigram savings array from smallest to largest savings
+      arr_savings.sort((a, b) => Math.sign(a[1] - b[1]));
+
+      const arr_to_varname = {};
+      // const actual_arr_to_varname_passes = [];
+      for (let v = 0; v < varnames.length; v++) {
+        const varname = varnames[v];
+        const [arr, savings] = arr_savings.pop();
+        arr_to_varname[arr] = varname;
+        if (arr_savings.length === 0) break;
+      }
+      if (arr_savings.length === 1) console.log({ arr_to_varname });
+
+      forEachFlatArray(result, ({ data, mod }) => {
+        const str = toString(data);
+        // if array is not worth replacing
+        if (str in arr_to_varname) {
+          const varname = arr_to_varname[str];
+          // replace array with "<delprevchar-uid>A<delnextchar-uid>"
+          mod(delprevchar + varname + delnextchar);
+          usedVarNames.add(varname);
+          substitutions[str] = varname;
+        }
+      });
+
+      if (hasStuff(substitutions)) {
+        changed = true;
+        all_substitutions.push({ type: "array", data: substitutions });
+      }
+    }
+
+    // if couldn't find a way to compress any further, break
+    if (!changed) {
+      console.log(`breaking after ${pass} passes`);
+      break;
     }
   }
 
+  // console.log("all_substitutions:", all_substitutions[0]);
+
   let outcode = "";
+
+  // add in null = "None"
+  // for Python
+  // because JSON.stringify will write in null values
+  if (lang === "PY") {
+    outcode += "# special handling for Python\nnull = None\nundefined = None\n";
+  }
 
   // first declare the first variable replacements
   outcode += declareVars({
     comment: "pass 1",
+    language: lang,
     vars: Array.from(varname2token.entries()).map(([name, { token }]) => {
       if (typeof token === "string") {
         return { name, value: token };
@@ -454,24 +652,47 @@ const encode = ({ data, debug_level = 0, max_passes = 0, output = "module.export
       } else if (typeof token === "number") {
         return { name, value: token.toString(), raw: true };
       }
-    }),
+    })
   });
 
-  actual_bigram_to_varname_passes.forEach((actual_bigram_to_varname, i) => {
+  all_substitutions.forEach(({ type, data }, i) => {
     outcode += "\n\n";
     outcode += declareVars({
-      comment: "pass " + (i + 2),
-      vars: Object.values(actual_bigram_to_varname).map(({ bigram, varname }) => ({ name: varname, value: bigram.join("+"), raw: true })),
+      comment: "pass " + (i + 2) + " (" + type + ")",
+      language: lang,
+      vars: Object.entries(data).map(([original, varname]) => {
+        const value = type === "bigram" ? JSON.parse(original).join("+") : original;
+        return {
+          name: varname,
+
+          // insert value directly into declaration code
+          raw: true,
+
+          value
+        };
+      })
     });
   });
 
-  // process the text operations
-  const processedJSON = JSON.stringify(result)
-    .replaceAll(new RegExp(`.${delprev}`, "g"), "")
-    .replaceAll(new RegExp(`${delnext}.`, "g"), "");
+  // process text operations for arrays
+  ({ text: outcode } = textops.run({
+    ops: ["delprevchar", "delnextchar"],
+    text: outcode,
+    uid: Number(uid)
+  }));
+
+  if (debug_level >= 2) console.log("[json-to-code] wrote all variable declarations");
+  const resultString = JSON.stringify(result, undefined, spacer);
+  if (debug_level >= 2) console.log("[json-to-code] stringified result");
+  const { text: processedJSON } = textops.run({
+    ops: ["delprevchar", "delnextchar"],
+    text: resultString,
+    uid: Number(uid)
+  });
+  if (debug_level >= 2) console.log("[json-to-code] ran final embedded text operations");
 
   outcode += "\n";
-  outcode += `${output} = ${processedJSON};`;
+  outcode += `${prefix} = ${processedJSON};`;
 
   return { code: outcode };
 };
