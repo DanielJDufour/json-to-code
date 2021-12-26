@@ -7,7 +7,10 @@
     "json-to-code.js"
   ],
   "scripts": {
-    "format": "npx prettier --print-width=240 --write *.js",
+    "build": "npx browserify -d -e json-to-code.js -o json-to-code.min.js -s jsonToCode && cp json-to-code.min.js ./demo/.",
+    "demo": "npm run build && cd demo && npx srvd --debug",
+    "format": "npx prettier --arrow-parens=avoid --print-width=240 --trailing-comma=none --write *.js",
+    "setup": "cd test-data && bash setup.sh",
     "test": "node test.js"
   },
   "repository": {
@@ -34,14 +37,16 @@
     "declare-vars": "^0.1.0",
     "deconcat": "^0.0.1",
     "deep-counter": "^0.0.2",
-    "deepest-walk": "^0.1.0",
+    "deepest-walk": "^1.0.2",
+    "flug": "^2.2.0",
     "min-quote": "*",
     "n-gram-counter": "*",
     "separo": "^0.0.2",
     "striptags": "^3.1.1",
+    "textops": "^0.0.2",
     "var-names": "*"
   },
   "devDependencies": {
-    "flug": "^0.0.0"
+    "wkt-crs": "^0.1.1"
   }
 }
