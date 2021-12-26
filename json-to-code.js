@@ -561,7 +561,7 @@ const encode = ({ data, debug_level = 0, language = "JavaScript", max_passes = 1
 
         // str includes any embedded text operations for the array
 
-        arr_count[str] ??= 0; // initialize to zero if necessary
+        if (arr_count[str] === undefined) arr_count[str] = 0; // initialize to zero if necessary
         arr_count[str]++;
       });
 
