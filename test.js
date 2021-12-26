@@ -9,11 +9,12 @@ const TEST_DATA_PATH = path.resolve(__dirname, "./test-data");
 
 const check = ({ data, debug_level, eq, filename, max_passes, uid }) => {
   data ??= require(path.resolve(TEST_DATA_PATH, filename));
+  console.log("original length:", (JSON.stringify(data).length).toLocaleString());
   const result = encode({ data, debug_level, max_passes });
   const outpath = path.resolve(TEST_DATA_PATH, filename.replace(".json", "-" + uid + ".tmp.js"));
+  console.log("compressed length:", (result.code.length).toLocaleString());
   fs.writeFileSync(outpath, result.code, "utf-8");
   console.log("wrote " + outpath);
-
   const decompressed = require(outpath);
   eq(decompressed, data);
 };
