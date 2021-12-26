@@ -19,7 +19,7 @@
         file.text().then(text => {
           try {
             document.getElementById("notification").textContent = "converting " + file.name + " to " + filename + ". please be patient.";
-            const result = jsonToCode.encode({ data: text, prefix: "window.mydata =" });
+            const result = jsonToCode.encode({ data: text, max_passes: 2, prefix: "window.mydata" });
             document.getElementById("notification").textContent = "saving " + filename;
             console.log("saving", result);
             window.saveFile({ data: result.code, filename })

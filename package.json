@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "description": "JSON-to-Code Encoding: Compress JSON Data into Actual Code",
   "main": "json-to-code.js",
+  "unpkg": "json-to-code.min.js",
+  "jsdelivr": "json-to-code.min.js",
   "files": [
-    "json-to-code.js"
+    "json-to-code.js",
+    "json-to-code.min.js"
   ],
   "scripts": {
     "build": "npx browserify -d -e json-to-code.js -o json-to-code.min.js -s jsonToCode && cp json-to-code.min.js ./demo/.",
-    "demo": "npm run build && cd demo && npx srvd --debug",
+    "demo": "npm run build && npx http-server",
     "format": "npx prettier --arrow-parens=avoid --print-width=240 --trailing-comma=none --write *.js",
     "setup": "cd test-data && bash setup.sh",
     "test": "node test.js"
