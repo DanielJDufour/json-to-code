@@ -10,7 +10,7 @@
     "json-to-code.min.js"
   ],
   "scripts": {
-    "build": "npx browserify -d -e json-to-code.js -o json-to-code.min.js -s jsonToCode && cp json-to-code.min.js ./demo/.",
+    "build": "npx browserify -d -e json-to-code.js -o json-to-code.min.js -s jsonToCode",
     "demo": "npm run build && npx http-server",
     "format": "npx prettier --arrow-parens=avoid --print-width=240 --trailing-comma=none --write *.js",
     "setup": "cd test-data && bash setup.sh",
